@@ -32,7 +32,7 @@ PyTroch implementation of our Preprint paper:
 [2023-04-06] We release the code, data, and pre-trained models.
 
 ## Environment
-```
+```bash
 # clone the repo
 git clone https://github.com/yangbang18/ZeroNLG
 
@@ -51,7 +51,7 @@ We can run the code under `torch==1.13.1`, `torch==1.10.1` and `torch==1.8.1`. O
 
 ## Quick Start
 **Visual Captioning:**
-```
+```python
 from zeronlg import ZeroNLG
 
 # Automatically download the model from Huggingface Hub
@@ -72,7 +72,7 @@ caption = model.forward_caption(images=url, lang='en', num_beams=3)
 ```
 
 **Machine Translation**
-```
+```python
 from zeronlg import ZeroNLG
 
 # Automatically download the model from Huggingface Hub
@@ -143,7 +143,7 @@ Please see [data/README.md](https://openi.pcl.ac.cn/yangb02/AdaCLIP/src/branch/p
 
 ### Training
 Pre-training for visual captioning
-```
+```bash
 # Stage 1: cross-lingual alignment using MSE
 #          initialize multilingual encoder with Multilingual-CLIP
 #          roughly 5 hours with a 16-GB Tesla T4 (3 epochs, batch_size 128)
@@ -167,7 +167,7 @@ python train.py \
 ```
 
 Pre-training for machine translation
-```
+```bash
 # Stage 1: cross-lingual alignment using MSE
 #          initialize multilingual encoder with DistilBERT
 #          roughly 5 hours with a 16-GB Tesla T4 (3 epochs, batch_size 128)
@@ -196,7 +196,7 @@ python train.py \
 
 
 ### Testing (Zero-Shot Transfer)
-```
+```bash
 # visual captioning
 ## evluate the model trained after 3 epochs
 ## `output/2stages/2_ZeroNLG_VC` is equivalent to `output/2stages/2_ZeroNLG_VC/2`
@@ -217,7 +217,7 @@ bash scripts/retrieval.sh $model
 ```
 
 ### Semi-Supervised Training on Visual Captioning
-```
+```bash
 # training on limited labeled data w/o pre-training
 bash scripts/semi.sh coco en
 bash scripts/semi.sh msrvtt en
