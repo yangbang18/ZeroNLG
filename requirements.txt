@@ -1,0 +1,23 @@
+wget
+pandas
+ftfy
+
+# ZeroNLG is built on top of this package :)
+sentence-transformers==2.2.2
+
+# for reading videos
+# note that this package is not available for Python 3.9 on Mac
+decord
+
+# for evaluations on visual captioning
+pycocoevalcap==1.2
+pycocotools==2.0.2
+
+# for visual captioning in Chinese
+jieba==0.42.1
+
+# for visual captioning in German or in French
+stanfordcorenlp==3.9.1.1
+
+# for evaluations on machine translation
+nltk
