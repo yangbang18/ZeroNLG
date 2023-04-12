@@ -62,10 +62,9 @@ ZeroNLG/
     └── folders that store raw videos of visual caption datasets (see configs.image_video_root)
 ```
 - You can download `corpus.zip` (165.6 MB) from [Google Drive](https://drive.google.com/file/d/1yCLpDLDO5TnoqfyHKwgi51Fw66QliOvM/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/1wQ6-3QJqFugVfK2lQ5oFAg)(extract code: `wx4a`)
-- You can download `annotations.zip` (121.4 MB) from [Google Drive](https://drive.google.com/file/d/19n62ho2uPkJl-wPQoOvCzQdKy7AjvqaT/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/1SjujMs7Jo1dQu2Y1csezzg)(extract code: `4trx`).
+- You can download `annotations.zip` (101 MB) from [Google Drive](https://drive.google.com/file/d/19n62ho2uPkJl-wPQoOvCzQdKy7AjvqaT/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/16Sl03GBMhlWXWDDK7ODEfw)(extract code: `pkvw`).
 
-
-**Notes:** See `prepare_text_data.ipynb` to know how we prepare annotations.
+**Notes:** See `prepare_text_data.ipynb` to know how we prepare annotations and training corpora.
 
 ## Langauges and Datasets
 Languages and their [ISO 639‑1 Code](https://www.iso.org/iso-639-language-codes.html):
