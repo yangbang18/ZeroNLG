@@ -139,7 +139,7 @@ Model: [zeronlg-4langs-mt](https://huggingface.co/yangbang18/zeronlg-4langs-mt) 
 
 ## Reproduction
 ### Data
-Please see [data/README.md](https://openi.pcl.ac.cn/yangb02/AdaCLIP/src/branch/pami/DATA.md) for more details.
+Please see [data/README.md](https://github.com/yangbang18/ZeroNLG/tree/master/data) for more details.
 
 ### Training
 Pre-training for visual captioning
