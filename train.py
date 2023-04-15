@@ -74,7 +74,8 @@ if __name__ == '__main__':
     parser.add_argument('--log_every', type=int, default=500)
     
     # Method-related settings
-    parser.add_argument('--scales', type=float, nargs='+', default=[1.0, 0.0, 0.0], help='Scales of loss_mse, loss_at_teacher, loss_at_student')
+    parser.add_argument('--scales', type=float, nargs='+', default=[1.0, 0.0, 0.0, 0.0], 
+                        help='Scales of loss_mse, loss_at_teacher, loss_at_student, loss_contrastive')
     parser.add_argument('--use_masking', action='store_true',
                         help='Wheter to apply input corruption, i.e., randomly mask encoder\'s input tokens')
     parser.add_argument('--mask_prob', type=float, default=0.15,
@@ -97,7 +98,7 @@ if __name__ == '__main__':
     if not args.inference_batch_size:
         args.inference_batch_size = args.batch_size
     
-    assert len(args.scales) == 3
+    assert len(args.scales) == 4
 
     output_path = args.output_path or os.path.join(args.output_root, args.exp_name)
     os.makedirs(output_path, exist_ok=True)
@@ -208,11 +209,11 @@ if __name__ == '__main__':
     student_model = Framework(modules=modules, logger=logger)
     student_model.set_module_attribute(Dense, 'proj_token_embs', args.student_emb_keyname == 'token_embeddings')
 
-    if args.scales[0] == 0 and args.scales[1] == 0:
+    if args.scales[0] == 0 and args.scales[1] == 0 and args.scales[3] == 0:
         logger.info('Training does not need the teacher model, set it to None')
         teacher_model = None
     
-    if args.scales[0] == 0 and args.scales[2] == 0:
+    if args.scales[0] == 0 and args.scales[2] == 0 and args.scales[3] == 0:
         logger.info('Training does not need the multimodal encoder, ignore it')
         student_model = Framework(modules=student_model.get_decoding_modules(), logger=logger)
 

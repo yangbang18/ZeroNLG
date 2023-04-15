@@ -149,7 +149,7 @@ Pre-training for visual captioning
 #          roughly 5 hours with a 16-GB Tesla T4 (3 epochs, batch_size 128)
 python train.py \
 --use_amp \
---scales 1 0 0 \
+--scales 1 0 0 0 \
 --target_languages en zh de fr \
 --student_model_name sentence-transformers/clip-ViT-B-32-multilingual-v1 \
 --output_path output/2stages/1_MSE \
@@ -159,7 +159,7 @@ python train.py \
 #          roughly 13 hours with a 16-GB Tesla T4 (3 epochs, batch_size 32)
 python train.py \
 --use_amp \
---scales 0 0 1 \
+--scales 0 0 1 0 \
 --target_languages en zh de fr \
 --student_model_name output/2stages/1_MSE \
 --output_path output/2stages/2_ZeroNLG_VC \
@@ -173,7 +173,7 @@ Pre-training for machine translation
 #          roughly 5 hours with a 16-GB Tesla T4 (3 epochs, batch_size 128)
 python train.py \
 --use_amp \
---scales 1 0 0 \
+--scales 1 0 0 0 \
 --target_languages en zh de fr \
 --student_model_name distilbert-base-multilingual-cased \
 --output_path output/2stages/1_MSE_MT \
@@ -183,7 +183,7 @@ python train.py \
 #          roughly 13 hours with a 16-GB Tesla T4 (3 epochs, batch_size 32)
 python train.py \
 --use_amp \
---scales 0 0 1 \
+--scales 0 0 1 0 \
 --target_languages en zh de fr \
 --student_model_name output/2stages/1_MSE_MT \
 --output_path output/2stages/2_ZeroNLG_MT \
@@ -192,7 +192,9 @@ python train.py \
 --mask_prob 0.05 \
 --noise_std 0.001
 ```
-**Note:** The training process does not involve any validation operation, i.e., you should choose the best-performed model on a specific dataset by yourself. **In our experiments, we always use ZeroNLG that applys auto-encoding training after 3 epochs for downstream evaluations because it generally performs the best.**
+**Note:** 
+1. Use `python train.py --help` to see explainations of arguments.
+2. The training process does not involve any validation operation, i.e., you should choose the best-performed model on a specific dataset by yourself. **In our experiments, we always use ZeroNLG that applys auto-encoding training after 3 epochs for downstream evaluations because it generally performs the best.**
 
 
 ### Testing (Zero-Shot Transfer)
