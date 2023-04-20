@@ -105,7 +105,7 @@ where there is only one column and one line is for each sentence.
 ### **Visual Captioning**
 Each dataset has 5 files: 
 - `train.json`:
-```
+```python
 # a list of samples, each of which is a dict
 [ 
   # a sample for video captioning
@@ -124,7 +124,7 @@ Each dataset has 5 files:
 ] 
 ```
 - `val.json`, 
-```
+```python
 # a list of samples, each of which is a dict
 [ 
   # a sample for video captioning
@@ -136,7 +136,7 @@ Each dataset has 5 files:
       "a music video featuring a girl and a sunset for the song cool kids", 
       "a music video where a nerdy girl wishes she was like the cool kids",
       ...
-    ] # includes all captions paired with this video
+    ], # includes all captions paired with this video
     "image_id": 6513
   }
 
@@ -155,7 +155,7 @@ Each dataset has 5 files:
 ] 
 ```
 - `val_gt.json`: We should prepare a ground-truth file accepted by COCO Evaluation Server like this:
-```
+```python
 # data/annotations/flickr30k/en/val_gt.json
 {
   "annotations": [
@@ -187,7 +187,6 @@ Each dataset has 5 files:
 - `test.json`: similar to `val.json`
 - `test_gt.json`. similar to `val_gt.json`
 
-Note that for non-English annotations, we name the above 5 files with the `{lang}_` prefix, where `lang` belongs to {`zh`, `de`, `fr`} in the paper.
 
 ### **Machine Translation**
 Each translation task of a specific dataset contains files like `{split}.{language1}` and `{split}.{language2}`, where `split` belongs to {`train` (optional), `val` (optional), `test`}. Within files, one line is for each sentence. More importantly, sentences on the same line in two files of the same split are paired data.
