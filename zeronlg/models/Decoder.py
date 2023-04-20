@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+import transformers
 from torch import nn
 from typing import List, Dict, Optional, Union
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
@@ -101,6 +102,12 @@ class Decoder(nn.Module):
         if tokenizer_name_or_path is not None:
             self.auto_model.config.tokenizer_class = self.tokenizer.__class__.__name__
 
+        # determine the behavior during generation based on the version of transformers
+        self.should_repeat = True
+        version = [int(item) for item in transformers.__version__.split('.')]
+        if version[0] > 4 or (version[0] == 4 and version[1] >=27):
+            # after 4.27.0, we should not repeat encoder's outputs by `num_beams` * `num_return_sequences` times
+            self.should_repeat = False
 
     def _load_model(self, model_name_or_path, config, from_pretrained):
         """Loads the transformer model"""
@@ -176,18 +183,20 @@ class Decoder(nn.Module):
                     encoder_hidden_states = features[f'{at}_hidden_states']
                 encoder_hidden_states = self.prepare_encoder_hidden_states(encoder_hidden_states)
 
-                #n_repeats = 1 # for compatibility of transformers==4.27.1
-                n_repeats = generate_kwargs['num_beams']
-                if generate_kwargs.get('do_sample', False):
-                    n_repeats *= generate_kwargs.get('num_return_sequences', 1)
-
-                encoder_hidden_states = encoder_hidden_states.repeat_interleave(n_repeats, dim=0)
+                if self.should_repeat:
+                    n_repeats = generate_kwargs['num_beams']
+                    if generate_kwargs.get('do_sample', False):
+                        n_repeats *= generate_kwargs.get('num_return_sequences', 1)
+                    encoder_hidden_states = encoder_hidden_states.repeat_interleave(n_repeats, dim=0)
+                else:
+                    n_repeats = 1
+                encoder_attention_mask = self.get_encoder_attention_mask(encoder_hidden_states, features, at, n_repeats=n_repeats)
 
                 inputs = {
                     'input_ids': features['decoder_input_ids'], 
                     'encoder_hidden_states': encoder_hidden_states,
                     'attention_mask': None,
-                    'encoder_attention_mask': self.get_encoder_attention_mask(encoder_hidden_states, features, at, n_repeats=n_repeats),
+                    'encoder_attention_mask': encoder_attention_mask,
                     'eos_token_id': self.eos_token_id,
                     'pad_token_id': self.pad_token_id,
                 }
@@ -262,7 +271,7 @@ class Decoder(nn.Module):
             captions.append(caption)
         return captions
 
-    def prepare_inputs_for_generation(self, input_ids, past=None, attention_mask=None, **model_kwargs):
+    def prepare_inputs_for_generation(self, input_ids, past=None, attention_mask=None, **kwargs):
         input_shape = input_ids.shape
         # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         if attention_mask is None:
@@ -272,12 +281,12 @@ class Decoder(nn.Module):
         if past is not None:
             input_ids = input_ids[:, -1:]
 
-        assert model_kwargs.get('encoder_hidden_states', None) is not None
+        assert kwargs.get('encoder_hidden_states', None) is not None
         
         return {
             "input_ids": input_ids, 
             "attention_mask": attention_mask, 
             "past_key_values": past, 
-            'encoder_hidden_states': model_kwargs['encoder_hidden_states'],
-            'encoder_attention_mask': model_kwargs['encoder_attention_mask'],
+            'encoder_hidden_states': kwargs['encoder_hidden_states'],
+            'encoder_attention_mask': kwargs['encoder_attention_mask'],
         }
