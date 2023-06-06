@@ -134,7 +134,7 @@ Model: [zeronlg-4langs-mt](https://huggingface.co/yangbang18/zeronlg-4langs-mt) 
 **Notes**:
 - `Metric`: BLEU.
 - `A->B` means translating A language into B language.
-- `B<-A` means translating B language into A language.
+- `A<-B` means translating B language into A language.
 
 
 ## Reproduction
