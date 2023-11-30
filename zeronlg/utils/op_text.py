@@ -1,8 +1,6 @@
-import requests
 import torch
 from torch import Tensor
-from PIL import Image
-from typing import List, Tuple, Union, Dict
+from typing import Dict
 
 
 def random_masking_(

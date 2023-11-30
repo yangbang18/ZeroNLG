@@ -3,7 +3,6 @@ import torch
 import torch.distributed as dist
 
 
-
 def setup_for_distributed(is_master):
     """
     This function disables printing when not in master process

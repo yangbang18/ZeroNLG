@@ -7,13 +7,14 @@ import numpy as np
 import configs
 
 from torch.utils.data import DataLoader
-from sentence_transformers import LoggingHandler
 
 import zeronlg
-from zeronlg import CaptionDataset, CaptionEvaluator
+from zeronlg import CaptionDataset, CaptionEvaluator, LoggingHandler
 from zeronlg.models import Projector, Decoder, CLIPModel
 from zeronlg.utils import get_formatted_string
 from zeronlg.losses import LossManager
+from zeronlg.models.Decoder import MAX_LANGUAGES
+
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -56,6 +57,10 @@ if __name__ == '__main__':
     parser.add_argument('--use_pretrained_decoder', action='store_true')
     parser.add_argument('--decoder_max_seq_length', type=int, default=128, help='Student model max. lengths for inputs (number of word pieces)')
     parser.add_argument('--freeze_word_embs', action='store_true')
+    parser.add_argument('--language_identifier_strategy', type=str, default='bos', choices=['bos', 'type'],
+                        help='How to guide the decoder to generate sentences in specific language? \
+                              bos: use language-specific begin-of-sentence token; \
+                              type: use language-specific token type ids')
 
     # Data paths and attributes
     parser.add_argument('--dataset', type=str, default='coco')
@@ -144,6 +149,7 @@ if __name__ == '__main__':
             teacher_model_name=teacher_model_name,
             use_clip_tokens=args.use_clip_tokens,
             max_seq_length=args.decoder_max_seq_length,
+            language_identifier_strategy=args.language_identifier_strategy,
         )
         dim_tea = teacher_model._last_module().get_sentence_embedding_dimension()
         dim_dec = decoder.get_word_embedding_dimension()

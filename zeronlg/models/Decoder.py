@@ -5,9 +5,8 @@ import transformers
 from torch import nn
 from typing import List, Dict, Optional, Union
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
-from sentence_transformers.util import snapshot_download
-from ..utils import get_cache_folder
-from .. import __LIBRARY_NAME__, __version__
+from ..utils import download_if_necessary
+from transformers import PreTrainedTokenizer
 
 
 # map a language to a specific token, 
@@ -18,6 +17,15 @@ LANG2TOKEN = {
     'de': '[unused3]',
     'fr': '[unused4]',
 } # Note: do not modify the existing mappings in LANG2TOKEN, you can instead add new ones
+
+# map a language to a specific token type id
+LANG2TYPEID = {
+    'en': 0,
+    'zh': 1,
+    'de': 2,
+    'fr': 3,
+}
+MAX_LANGUAGES = 256
 
 
 class Decoder(nn.Module):
@@ -45,47 +53,48 @@ class Decoder(nn.Module):
                  cache_folder: Optional[str] = None,
                  tokenizer_args: Dict = {}, 
                  do_lower_case: bool = False,
-                 tokenizer_name_or_path : str = None,
+                 tokenizer: Optional[PreTrainedTokenizer] = None,
                  from_pretrained: bool = True,
                  use_auth_token: Union[bool, str, None] = None,
                  attend_to: List[str] = ['student'],
                  teacher_model_name: str = None,
                  use_clip_tokens: Optional[bool] = None,
+                 language_identifier_strategy: str = 'bos',
                  ):
         super().__init__()
-        self.config_keys = ['max_seq_length', 'do_lower_case', 'attend_to', 'teacher_model_name', 'use_clip_tokens']
+        self.config_keys = ['max_seq_length', 'do_lower_case', 'attend_to', 'teacher_model_name', 'use_clip_tokens', 'language_identifier_strategy']
         self.do_lower_case = do_lower_case
         self.teacher_model_name = teacher_model_name
         self.use_clip_tokens = bool(use_clip_tokens or False)
 
+        assert language_identifier_strategy in ['bos', 'type']
+        self.language_identifier_strategy = language_identifier_strategy
+        if self.language_identifier_strategy == 'type':
+            model_args['type_vocab_size'] = MAX_LANGUAGES
+
         assert isinstance(attend_to, (list, tuple))
         self.attend_to = list(set(attend_to))
 
-        cache_folder = get_cache_folder(cache_folder)
-        if os.path.exists(model_name_or_path):
-            model_path = model_name_or_path
-        else:
-            model_path = os.path.join(cache_folder, model_name_or_path.replace('/', '_'))
-        
-        if not os.path.exists(os.path.join(model_path, 'config.json')):
-            storage_path = snapshot_download(model_name_or_path,
-                            cache_dir=cache_folder,
-                            library_name=__LIBRARY_NAME__,
-                            library_version=__version__,
-                            ignore_files=['flax_model.msgpack', 'rust_model.ot', 'tf_model.h5'],
-                            use_auth_token=use_auth_token)
-            assert model_path == storage_path
-        
-        assert os.path.exists(model_path)
-
+        model_path = download_if_necessary(
+            model_name_or_path=model_name_or_path, 
+            cache_folder=cache_folder, 
+            use_auth_token=use_auth_token
+        )
         config = AutoConfig.from_pretrained(model_path, **model_args)
         assert config.is_decoder is True
         assert config.add_cross_attention is True
-
         self._load_model(model_path, config, from_pretrained)
         self.auto_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
 
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path or model_path, **tokenizer_args)
+        if tokenizer is None:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path, **tokenizer_args)
+        else:
+            self.tokenizer = tokenizer
+            self.auto_model.config.tokenizer_class = self.tokenizer.__class__.__name__
+            for k in ['bos', 'cls', 'eos', 'sep', 'pad', 'unk']:
+                key = f'{k}_token_id'
+                setattr(self.auto_model.config, key, getattr(self.tokenizer, key, None))
+
         self.vocab = self.tokenizer.get_vocab()
         
         self.bos_token_id = self.tokenizer.bos_token_id or self.tokenizer.cls_token_id
@@ -98,9 +107,6 @@ class Decoder(nn.Module):
                 max_seq_length = min(self.auto_model.config.max_position_embeddings, self.tokenizer.model_max_length)
 
         self.max_seq_length = max_seq_length
-
-        if tokenizer_name_or_path is not None:
-            self.auto_model.config.tokenizer_class = self.tokenizer.__class__.__name__
 
         # determine the behavior during generation based on the version of transformers
         self.should_repeat = True
@@ -154,6 +160,9 @@ class Decoder(nn.Module):
             }
             inputs['labels'] = inputs['input_ids'].masked_fill(inputs['input_ids'] == self.tokenizer.pad_token_id, -100)
 
+            if self.language_identifier_strategy == 'type':
+                assert inputs['token_type_ids'] is not None, 'Please refer to the `Decoder.tokenize` function'
+
             for at in attend_to:
                 assert at in ['teacher', 'student'], f"`attend_to` == {at} is not supported during training yet"
 
@@ -169,9 +178,20 @@ class Decoder(nn.Module):
 
                 features.update({f'loss_at_{at}': loss})
         else:
+            lang = features.pop('lang', None)
+            assert lang is not None, 'please specify `lang` during inference'
+
             # if we do not filter those unused keys, there will be an error for transformers==4.27.1
-            ignore_keys = ['sentence_embedding', 'source_embedding', 'attend_to', 'decoder_input_ids', 'student_hidden_states', 'teacher_hidden_states', 'token_embeddings', 'num_frames']
+            ignore_keys = ['sentence_embedding', 'source_embedding', 'attend_to', 'student_hidden_states', 'teacher_hidden_states', 'token_embeddings', 'num_frames']
             generate_kwargs = {k: v for k, v in features.items() if k not in ignore_keys}
+
+            tensor = features['source_embedding'] if features['source_embedding'] is not None else features['token_embeddings']
+            batch_size = tensor.size(0)
+            if self.language_identifier_strategy == 'bos':
+                generate_kwargs['input_ids'] = (tensor.new_zeros(batch_size, 1) + self.vocab[LANG2TOKEN[lang]]).long()
+            else:
+                generate_kwargs['input_ids'] = (tensor.new_zeros(batch_size, 1) + self.bos_token_id).long()
+                generate_kwargs['token_type_ids'] = (tensor.new_zeros(batch_size, 1) + LANG2TYPEID[lang]).long()
 
             for at in attend_to:
                 assert at in ['student', 'teacher', 'both']
@@ -193,7 +213,6 @@ class Decoder(nn.Module):
                 encoder_attention_mask = self.get_encoder_attention_mask(encoder_hidden_states, features, at, n_repeats=n_repeats)
 
                 inputs = {
-                    'input_ids': features['decoder_input_ids'], 
                     'encoder_hidden_states': encoder_hidden_states,
                     'attention_mask': None,
                     'encoder_attention_mask': encoder_attention_mask,
@@ -210,7 +229,7 @@ class Decoder(nn.Module):
     def get_word_embedding_dimension(self) -> int:
         return self.auto_model.config.hidden_size
 
-    def tokenize(self, texts: List[str], langs: Optional[List[str]]=None):
+    def tokenize(self, texts: List[str], langs: Optional[List[str]]=None, **kwargs):
         """Tokenizes texts and maps tokens to token-ids"""
         to_tokenize = texts
         #strip
@@ -228,23 +247,34 @@ class Decoder(nn.Module):
 
         if langs:
             assert len(outputs['input_ids']) == len(langs)
-            for input_ids, lang in zip(outputs['input_ids'], langs):
-                assert lang in LANG2TOKEN, f"{lang} not in LANG2TOKEN {LANG2TOKEN.keys()}"
+            if self.language_identifier_strategy == 'bos':
+                for input_ids, lang in zip(outputs['input_ids'], langs):
+                    assert lang in LANG2TOKEN, f"{lang} not in LANG2TOKEN {LANG2TOKEN.keys()}"
+                    
+                    lang_token_id = self.vocab.get(LANG2TOKEN[lang], None)
+                    if not lang_token_id:
+                        raise NotImplementedError(f'The special token of {lang}, i.e., {LANG2TOKEN[lang]}, is not found in the vocab;\
+                                You may call tokenizer.add_tokens or try passing the argument `--language_identifier_strategy type`')
+                    
+                    index_of_bos_token_id = input_ids.numpy().tolist().index(self.bos_token_id)
+                    # override the first bos token with lang token
+                    input_ids[index_of_bos_token_id] = lang_token_id
+            else:
+                # use the same bos_token_id for all languages
+                # modify token_type_ids to identify which language to be generated
+                if 'token_type_ids' not in outputs:
+                    token_type_ids = torch.zeros_like(outputs['input_ids'])
+                else:
+                    token_type_ids = outputs['token_type_ids']
+
+                for i, lang in enumerate(langs):
+                    assert lang in LANG2TYPEID
+                    token_type_ids[i, :] += LANG2TYPEID[lang]
                 
-                lang_token_id = self.vocab.get(LANG2TOKEN[lang], None)
-                if not lang_token_id:
-                    raise NotImplementedError(f'The special token of {lang}, i.e., {LANG2TOKEN[lang]}, is not found in the vocab; You may call tokenizer.add_tokens')
-                
-                index_of_bos_token_id = input_ids.numpy().tolist().index(self.bos_token_id)
-                # override the first bos token with lang token
-                input_ids[index_of_bos_token_id] = lang_token_id
+                outputs['token_type_ids'] = token_type_ids
                 
         return {f'decoder_{k}': v for k, v in outputs.items()}
     
-    def get_bos_input_ids(self, batch_size: int, lang: Optional[str]=None):
-        bos = self.bos_token_id if lang is None else self.vocab[LANG2TOKEN[lang]]
-        return torch.LongTensor([[bos] for _ in range(batch_size)])
-
     def get_config_dict(self):
         return {key: self.__dict__[key] for key in self.config_keys}
 
@@ -283,10 +313,15 @@ class Decoder(nn.Module):
 
         assert kwargs.get('encoder_hidden_states', None) is not None
         
-        return {
+        out = {
             "input_ids": input_ids, 
             "attention_mask": attention_mask, 
             "past_key_values": past, 
             'encoder_hidden_states': kwargs['encoder_hidden_states'],
             'encoder_attention_mask': kwargs['encoder_attention_mask'],
         }
+
+        if 'token_type_ids' in kwargs:
+            out['token_type_ids'] = kwargs['token_type_ids'][:, -1:]
+        
+        return out

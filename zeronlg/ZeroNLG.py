@@ -2,12 +2,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from PIL import Image
-from typing import List, Optional, Union, Dict, Any, Tuple
-from sentence_transformers.util import batch_to_device
+from typing import List, Optional, Union, Dict, Any, Tuple, Callable
 
 from . import Framework
-from .utils import process_images
-from .models import Decoder, CLIPModel
+from .utils import process_images, batch_to_device
+from .models import CLIPModel
 
 
 SUPPORTED_TASKS = ['caption', 'translate']
@@ -15,21 +14,23 @@ SUPPORTED_TASKS = ['caption', 'translate']
 
 class ZeroNLG(nn.Module):
     def __init__(self, 
-                 multilingual_model: Union[str, Framework], 
-                 clip_model: Union[str, Framework, None] = None, 
+                 multilingual_model: Union[str, nn.Sequential], 
+                 clip_model: Union[str, nn.Sequential, None] = None, 
                  use_clip_tokens: Optional[bool] = None,
                  load_clip_model: bool = True,
                  device: Union[str, torch.device, None] = None,
+                 framework_cls: Callable = Framework,
         ):
         super().__init__()
         self.use_clip_tokens = use_clip_tokens
+        self.framework_cls = framework_cls
 
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self._target_device = torch.device(device)
 
         if type(multilingual_model) is str:
-            self.multilingual_model = Framework(multilingual_model, device=self.device)
+            self.multilingual_model = self.framework_cls(multilingual_model, device=self.device, tie_word_embeddings=False)
         else:
             self.multilingual_model = multilingual_model
 
@@ -40,7 +41,7 @@ class ZeroNLG(nn.Module):
         elif type(clip_model) is str:
             self.clip_model_name = clip_model
         else:
-            assert isinstance(clip_model, Framework)
+            assert isinstance(clip_model, self.framework_cls)
             self.clip_model = clip_model
 
         if load_clip_model:
@@ -120,9 +121,9 @@ class ZeroNLG(nn.Module):
             max_length=max_length,
             min_length=min_length,
             repetition_penalty=repetition_penalty,
+            lang=lang,
         )
         features.update(kwargs) # kwargs for generation
-        features['decoder_input_ids'] = self.get_bos_input_ids(batch_size=image_embs.size(0), lang=lang)
         features = batch_to_device(features, self.device)
 
         with torch.no_grad():
@@ -146,6 +147,8 @@ class ZeroNLG(nn.Module):
             attend_to: Union[str, List[str], None] = None,
             **other_generate_kwargs
         ) -> Union[List[str], Dict[str, Any]]:
+
+        torch.cuda.empty_cache()
 
         # by default, the decoder attend to student's output in cross-attention layers
         attend_to = attend_to or ['student']
@@ -192,10 +195,10 @@ class ZeroNLG(nn.Module):
             max_length=max_length,
             min_length=min_length,
             repetition_penalty=repetition_penalty,
+            lang=lang,
             **tokenized_features,
         )
         features.update(other_generate_kwargs)
-        features['decoder_input_ids'] = self.get_bos_input_ids(batch_size=batch_size, lang=lang)
         features = batch_to_device(features, self.device)
 
         with torch.no_grad():
@@ -282,11 +285,6 @@ class ZeroNLG(nn.Module):
             text_embs = F.normalize(text_embs, dim=-1)
 
         return text_embs
-
-    def get_bos_input_ids(self, batch_size: int, lang: Optional[str] = None) -> Tensor:
-        for module in self.multilingual_model.get_modules():
-            if isinstance(module, Decoder):
-                return module.get_bos_input_ids(batch_size=batch_size, lang=lang)
     
     def _load_clip_model(self):
         if not hasattr(self, 'clip_model'):
@@ -299,7 +297,7 @@ class ZeroNLG(nn.Module):
                 assert self.clip_model_name is not None, "you are trying to use a clip model, whose name can not be obtained from the multilingual model;\
                     Maybe you should pass the argument `clip_model_name` when defining a ZeroNLG model"
                 assert type(self.clip_model_name) is str
-                self.clip_model = Framework(self.clip_model_name, device=self.device)
+                self.clip_model = self.framework_cls(self.clip_model_name, device=self.device)
             
             self.use_clip_tokens = self.use_clip_tokens or self.multilingual_model.get_module_attribute('use_clip_tokens', False)
             self.clip_model.set_module_attribute(CLIPModel, 'use_clip_tokens', self.use_clip_tokens)

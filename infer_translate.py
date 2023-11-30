@@ -8,8 +8,7 @@ import logging
 import configs
 
 from torch.utils.data import DataLoader
-from sentence_transformers import LoggingHandler
-from zeronlg import ZeroNLG, TranslateDataset, TranslateEvaluator
+from zeronlg import ZeroNLG, TranslateDataset, TranslateEvaluator, LoggingHandler
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -36,7 +35,7 @@ if __name__ == '__main__':
     )
     
     # Dataloader settings
-    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', type=int, default=16)
     
     # Evaluation settings
     parser.add_argument('--source', type=str, default='en', help='source language')
@@ -75,7 +74,7 @@ if __name__ == '__main__':
     assert args.modes in [['val'], ['test'], ['val', 'test']]
 
     logger.info(f'Creating model from {args.model}')
-    model = ZeroNLG(args.model)
+    model = ZeroNLG(args.model, load_clip_model=False)
 
     # prepare evaluation settings
     evaluation_settings = {

@@ -5,13 +5,11 @@ import argparse
 
 from torch.utils.data import DataLoader
 
-from sentence_transformers import LoggingHandler
-from sentence_transformers.models import Pooling
-
-from zeronlg import Framework
+from zeronlg import Framework, LoggingHandler
 from zeronlg.losses import LossManager
 from zeronlg.datasets import PretrainDataset
-from zeronlg.models import Dense, Projector, Decoder, Transformer
+from zeronlg.models import Dense, Pooling, Projector, Decoder, Transformer
+
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -42,6 +40,14 @@ if __name__ == '__main__':
                               even if you specify `use_pretrained_decoder` to True')
     parser.add_argument('--decoder_max_seq_length', type=int, default=128, 
                         help='Student model max. lengths for decoder inputs (number of word pieces)')
+    parser.add_argument('--no_tie_all', action='store_true', 
+                        help='If specified, decoder\'s word embeddings will be not tied to encoder\'s word embeddings')
+    parser.add_argument('--init_word_embeddings', action='store_true',
+                        help='If specified, decoder\'s word embeddings will be initialized with encoder\'s word embeddings')
+    parser.add_argument('--language_identifier_strategy', type=str, default='bos', choices=['bos', 'type'],
+                        help='How to guide the decoder to generate sentences in specific language? \
+                              bos: use language-specific begin-of-sentence token; \
+                              type: use language-specific token type ids')
 
     # Data settings
     parser.add_argument('--train_corpus_format', type=str, default="data/corpus/multilingual_cc3m/4langs/cc3m_{}-{}.tsv")
@@ -130,7 +136,11 @@ if __name__ == '__main__':
     ######## Student model ########
     logger.info(f"Create student model from {args.student_model_name}")
 
-    if args.student_model_name in ['distilbert-base-multilingual-cased']:
+    if args.student_model_name in [
+            'distilbert-base-multilingual-cased',
+            'bert-base-multilingual-cased',
+            'xlm-roberta-base',
+        ]:
         # a transformer model for encoding
         encoder = Transformer(
             args.student_model_name, 
@@ -144,6 +154,12 @@ if __name__ == '__main__':
     else:
         student_model = Framework(args.student_model_name, load_sbert_only=True)
         modules = student_model.get_modules()
+
+        if isinstance(modules[-1], Pooling):
+            # e.g., student_model_name == sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 
+            dim_enc = modules[-1].get_sentence_embedding_dimension()
+            dense_model = Dense(dim_enc, dim_teacher, bias=False, activation_function=nn.modules.linear.Identity())
+            modules = modules + [dense_model]
 
     attend_to = []
     if args.scales[1]:
@@ -161,7 +177,14 @@ if __name__ == '__main__':
         if args.scales[1] or args.scales[2]:
 
             if 'bert' not in args.decoder_name.lower():
-                raise NotImplementedError('You should take care of `num_hidden_layers`')
+                raise NotImplementedError('You should take care of `num_hidden_layers` etc')
+
+            if not args.no_tie_all or args.init_word_embeddings:
+                # in this case, we must ensure that decoder's tokenizer is identical to encoder's
+                assert isinstance(modules[0], Transformer)
+                tokenizer = modules[0].tokenizer
+            else:
+                tokenizer = None
 
             decoder = Decoder(
                 model_name_or_path=args.decoder_name,
@@ -169,10 +192,12 @@ if __name__ == '__main__':
                     'is_decoder': True, 
                     'add_cross_attention': True,
                     'num_hidden_layers': args.num_hidden_layers},
+                tokenizer=tokenizer,
                 from_pretrained=args.use_pretrained_decoder,
                 attend_to=attend_to,
                 teacher_model_name=args.teacher_model_name,
                 max_seq_length=args.decoder_max_seq_length,
+                language_identifier_strategy=args.language_identifier_strategy,
             )
             dim_dec = decoder.get_word_embedding_dimension()
 
@@ -206,7 +231,7 @@ if __name__ == '__main__':
         for p in module.parameters():
             p.requires_grad = False
 
-    student_model = Framework(modules=modules, logger=logger)
+    student_model = Framework(modules=modules, logger=logger, tie_all=not args.no_tie_all, init_word_embeddings=args.init_word_embeddings)
     student_model.set_module_attribute(Dense, 'proj_token_embs', args.student_emb_keyname == 'token_embeddings')
 
     if args.scales[0] == 0 and args.scales[1] == 0 and args.scales[3] == 0:
@@ -216,6 +241,10 @@ if __name__ == '__main__':
     if args.scales[0] == 0 and args.scales[2] == 0 and args.scales[3] == 0:
         logger.info('Training does not need the multimodal encoder, ignore it')
         student_model = Framework(modules=student_model.get_decoding_modules(), logger=logger)
+
+    #for n, p in student_model.named_parameters():
+    #    if p.requires_grad:
+    #        print(n, p.shape)
 
     logger.info(f'Student model architecture: \n {student_model}')
     logger.info(f"Total Params: {sum(p.numel() for p in student_model.parameters())}")

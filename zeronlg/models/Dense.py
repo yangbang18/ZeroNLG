@@ -1,10 +1,10 @@
+import os
+import json
 import torch
 from torch import Tensor
 from torch import nn
 from typing import Dict
-import os
-import json
-from sentence_transformers.util import fullname, import_from_string
+from ..utils import fullname, import_from_string
 
 
 # Derived from sentence_transformers.models.Dense

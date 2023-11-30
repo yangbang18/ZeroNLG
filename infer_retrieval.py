@@ -6,8 +6,7 @@ import logging
 import configs
 
 from torch.utils.data import DataLoader
-from sentence_transformers import LoggingHandler
-from zeronlg import ZeroNLG, CaptionDatasetForRetrieval, RetrievalEvaluator
+from zeronlg import ZeroNLG, CaptionDatasetForRetrieval, RetrievalEvaluator, LoggingHandler
 from zeronlg.utils import get_formatted_string
 
 logging.basicConfig(format='%(asctime)s - %(message)s',

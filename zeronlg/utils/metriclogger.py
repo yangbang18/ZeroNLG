@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from collections import defaultdict, deque
-
 from .distributed import is_dist_avail_and_initialized
 
 

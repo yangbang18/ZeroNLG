@@ -6,6 +6,7 @@
   - [TOC](#toc)
   - [Data Structure](#data-structure)
   - [Langauges and Datasets](#langauges-and-datasets)
+  - [Raw Images and Videos](#raw-images-and-videos)
   - [Data Formats](#data-formats)
     - [**Multilingual corpora for text-only training**](#multilingual-corpora-for-text-only-training)
     - [**Visual Captioning**](#visual-captioning)
@@ -58,13 +59,63 @@ ZeroNLG/
     │       │   ├── test.en         ## required for zero-shot transfer
     │       │   └── test.zh         ## required for zero-shot transfer
     │       └── ...      
-    ├── folders that store raw images of visual caption datasets (see configs.image_video_root)
-    └── folders that store raw videos of visual caption datasets (see configs.image_video_root)
+    └── folders that store raw images/videos of visual caption datasets
 ```
-- You can download `corpus.zip` (165.6 MB) from [Google Drive](https://drive.google.com/file/d/1yCLpDLDO5TnoqfyHKwgi51Fw66QliOvM/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/1wQ6-3QJqFugVfK2lQ5oFAg)(extract code: `wx4a`)
-- You can download `annotations.zip` (101 MB) from [Google Drive](https://drive.google.com/file/d/19n62ho2uPkJl-wPQoOvCzQdKy7AjvqaT/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/16Sl03GBMhlWXWDDK7ODEfw)(extract code: `pkvw`).
+- You can download `corpus.zip` (165.6 MB) from [Google Drive](https://drive.google.com/file/d/1yCLpDLDO5TnoqfyHKwgi51Fw66QliOvM/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/1wQ6-3QJqFugVfK2lQ5oFAg) (extract code: `wx4a`)
+- You can download `annotations.zip` (101 MB) from [Google Drive](https://drive.google.com/file/d/19n62ho2uPkJl-wPQoOvCzQdKy7AjvqaT/view?usp=share_link) or [Baidu网盘](https://pan.baidu.com/s/16Sl03GBMhlWXWDDK7ODEfw) (extract code: `pkvw`).
 
-**Notes:** See `prepare_text_data.ipynb` to know how we prepare annotations and training corpora.
+**Notes:** 
+- See [prepare_text_data.ipynb](/data/prepare_text_data.ipynb) to know how we prepare annotations and training corpora (CC3M-4L).
+- If you are interested in the impact of different training corpora on ZeroNLG, you can see [prepare_wmt_corpora.ipynb](/data/prepare_wmt_corpora.ipynb) for an example to prepare WMT-4L of the same data scale as that of CC3M-4L. You can download `corpus_WMT4L.zip` (361 MB) from [Google Drive](https://drive.google.com/file/d/1FHsWz-eo65NNDdYLY38uzSFFLoQTwbxw/view?usp=sharing) or [Baidu网盘](https://pan.baidu.com/s/1t3JmT71e2M0wm0gEZuQUaA) (extract code: `evp8`).
+
+## Raw Images and Videos
+<div align="center">
+<table border="1" width="100%">
+    <tr align="center">
+        <th>Datasets</th><th>Official Link</th><th>Shared Link (Ours)</th>
+    </tr>
+    <tr align="center">
+        <td>MSCOCO</td><td><a href=https://cocodataset.org/#download>Link</a></td><td>N/A</td>
+    </tr>
+    <tr align="center">
+        <td>Flickr30k</td><td><a href=http://shannon.cs.illinois.edu/DenotationGraph/data/index.html>Link</a></td><td>N/A</td>
+    </tr>
+    <tr align="center">
+        <td>MSRVTT</td><td><a href="http://ms-multimedia-challenge.com/2016/dataset">Link (expired)</a></td><td><a href="https://pkueducn-my.sharepoint.com/:u:/g/personal/2101112290_pkueducn_onmicrosoft_com/EW8dnlrbXrhPpHCzqUWYBmEBy_15l4nQuZBuIS2akdIWwg?e=mxCEwZ">Onedrive</a>, <a href="https://disk.pku.edu.cn:443/link/FD83012327909FEF5AFBA32571074151">PKU Yun</a> (6.1G)</td>
+    </tr>
+    <tr align="center">
+        <td>VATEX</td><td><a href="https://eric-xw.github.io/vatex-website/download.html">Link</a></td><td><a href="https://pkueducn-my.sharepoint.com/:u:/g/personal/2101112290_pkueducn_onmicrosoft_com/EbznKwMvV-1FsxxxRvbiu1cB5aC-NTspM1y5zkyJq6rZSQ?e=IcpHpT">Onedrive</a>, <a href="https://disk.pku.edu.cn:443/link/24892F356463CB7AC6B762ACC7757035">PKU Yun</a> (37.3G)</td>
+    </tr>
+</table>
+</div>
+
+After downloading, please organize raw images and videos as follows (depending on [configs.image_video_root](/configs.py#L2)):
+```
+ZeroNLG/
+    data
+    ├── MSCOCO
+    │   ├── train2014
+    │   │   ├── COCO_train2014_000000000009.jpg
+    │   │   └── ...
+    │   └── val2014
+    │       ├── COCO_val2014_000000000042.jpg
+    │       └── ...
+    ├── Flickr30k
+    │   └── flickr30k-images
+    │       ├── 1000092795.jpg
+    │       └── ...
+    ├── MSRVTT
+    │   └── all_videos
+    │       ├── video0.mp4
+    │       ├── ...
+    │       └── video9999.mp4
+    └── VATEX
+         └── all_videos
+             ├── video0.mp4
+             ├── ...
+             └── video34990.mp4
+```
+
 
 ## Langauges and Datasets
 Languages and their [ISO 639‑1 Code](https://www.iso.org/iso-639-language-codes.html):

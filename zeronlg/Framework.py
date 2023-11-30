@@ -5,15 +5,14 @@ import time
 import shutil
 import logging
 import datetime
-import random
 import numpy as np
 import transformers
 
 import stat
 import tempfile
-
 import torch
-import torch.backends.cudnn as cudnn
+import sentence_transformers
+
 from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -23,17 +22,22 @@ from collections import OrderedDict
 from distutils.dir_util import copy_tree
 from huggingface_hub import HfApi, HfFolder, Repository
 from typing import List, Dict, Tuple, Iterable, Type, Callable, Optional, Union
-
-from sentence_transformers import SentenceTransformer, LoggingHandler
-from sentence_transformers import __version__ as __sbert_version__
-from sentence_transformers.evaluation import SentenceEvaluator
-from sentence_transformers.util import batch_to_device, fullname, import_from_string
-from sentence_transformers.model_card_templates import ModelCardTemplate
-from sentence_transformers.models import Pooling
-
-from .models import Transformer, Projector, Decoder
-from .utils import MetricLogger, random_masking_, get_cache_folder
-from . import __LIBRARY_NAME__, __version__, __HUGGINGFACE_HUB_NAME__
+from sentence_transformers import LoggingHandler
+from .models import Transformer, Pooling, Projector, Decoder
+from .utils import (
+    MetricLogger, 
+    random_masking_, 
+    get_cache_folder, 
+    seed_everything,
+    batch_to_device,
+    import_from_string,
+    download_if_necessary,
+)
+from . import (
+    __LIBRARY_NAME__, 
+    __version__, 
+    __HUGGINGFACE_HUB_NAME__,
+)
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -54,7 +58,7 @@ sbert_mappings = {
 }
 
 
-class Framework(SentenceTransformer):
+class Framework(sentence_transformers.SentenceTransformer, nn.Sequential):
     def __init__(self, 
                  model_name_or_path: Optional[str] = None, 
                  modules: Optional[Iterable[nn.Module]] = None, 
@@ -62,9 +66,12 @@ class Framework(SentenceTransformer):
                  cache_folder: Optional[str] = get_cache_folder(), 
                  use_auth_token: Union[bool, str, None] = None,
                  tie_word_embeddings: bool = True,
+                 tie_all: bool = True,
+                 init_word_embeddings: bool = False,
                  freeze_word_embeddings: bool = False,
                  logger: logging.Logger = None,
                  load_sbert_only: bool = False,
+                 add_version: bool = True,
                  ):
 
         # check if we need to prefix `model_name_or_path` with __HUGGINGFACE_HUB_NAME__
@@ -74,30 +81,74 @@ class Framework(SentenceTransformer):
             and not os.path.exists(model_name_or_path):
             model_name_or_path = os.path.join(__HUGGINGFACE_HUB_NAME__, model_name_or_path)
 
-        super().__init__(model_name_or_path, modules, device, cache_folder, use_auth_token)
-
-        self.model_name_or_path = model_name_or_path
         self.logger = logger or global_logger
         self.load_sbert_only = load_sbert_only
-        
+
+        # ======= SentenceTransformer Initialization =========
+        self._model_card_vars = {}
+        self._model_card_text = None
+        self._model_config = {}
+
+        if model_name_or_path is not None and model_name_or_path != "":
+            self.logger.info("Load pretrained SentenceTransformer: {}".format(model_name_or_path))
+
+            #Old models that don't belong to any organization
+            basic_transformer_models = ['albert-base-v1', 'albert-base-v2', 'albert-large-v1', 'albert-large-v2', 'albert-xlarge-v1', 'albert-xlarge-v2', 'albert-xxlarge-v1', 'albert-xxlarge-v2', 'bert-base-cased-finetuned-mrpc', 'bert-base-cased', 'bert-base-chinese', 'bert-base-german-cased', 'bert-base-german-dbmdz-cased', 'bert-base-german-dbmdz-uncased', 'bert-base-multilingual-cased', 'bert-base-multilingual-uncased', 'bert-base-uncased', 'bert-large-cased-whole-word-masking-finetuned-squad', 'bert-large-cased-whole-word-masking', 'bert-large-cased', 'bert-large-uncased-whole-word-masking-finetuned-squad', 'bert-large-uncased-whole-word-masking', 'bert-large-uncased', 'camembert-base', 'ctrl', 'distilbert-base-cased-distilled-squad', 'distilbert-base-cased', 'distilbert-base-german-cased', 'distilbert-base-multilingual-cased', 'distilbert-base-uncased-distilled-squad', 'distilbert-base-uncased-finetuned-sst-2-english', 'distilbert-base-uncased', 'distilgpt2', 'distilroberta-base', 'gpt2-large', 'gpt2-medium', 'gpt2-xl', 'gpt2', 'openai-gpt', 'roberta-base-openai-detector', 'roberta-base', 'roberta-large-mnli', 'roberta-large-openai-detector', 'roberta-large', 't5-11b', 't5-3b', 't5-base', 't5-large', 't5-small', 'transfo-xl-wt103', 'xlm-clm-ende-1024', 'xlm-clm-enfr-1024', 'xlm-mlm-100-1280', 'xlm-mlm-17-1280', 'xlm-mlm-en-2048', 'xlm-mlm-ende-1024', 'xlm-mlm-enfr-1024', 'xlm-mlm-enro-1024', 'xlm-mlm-tlm-xnli15-1024', 'xlm-mlm-xnli15-1024', 'xlm-roberta-base', 'xlm-roberta-large-finetuned-conll02-dutch', 'xlm-roberta-large-finetuned-conll02-spanish', 'xlm-roberta-large-finetuned-conll03-english', 'xlm-roberta-large-finetuned-conll03-german', 'xlm-roberta-large', 'xlnet-base-cased', 'xlnet-large-cased']
+
+            if os.path.exists(model_name_or_path):
+                #Load from path
+                model_path = model_name_or_path
+            else:
+                #Not a path, load from hub
+                if '\\' in model_name_or_path or model_name_or_path.count('/') > 1:
+                    raise ValueError("Path {} not found".format(model_name_or_path))
+
+                if '/' not in model_name_or_path and model_name_or_path.lower() not in basic_transformer_models:
+                    # A model from sentence-transformers
+                    model_name_or_path = "sentence-transformers/" + model_name_or_path
+
+                model_path = os.path.join(cache_folder, model_name_or_path.replace("/", "_"))
+                
+                # Yang B. modification: skip if model path is existed
+                if not os.path.exists(model_path):
+                    if not os.path.exists(os.path.join(model_path, 'modules.json')):
+                        # Download from hub with caching
+                        download_if_necessary(model_path, cache_folder, use_auth_token, key_files=['modules.json'])
+
+            if os.path.exists(os.path.join(model_path, 'modules.json')):    #Load as SentenceTransformer model
+                modules = self._load_sbert_model(model_path)
+            else:   #Load with AutoModel
+                modules = self._load_auto_model(model_path)
+
+        if modules is not None and not isinstance(modules, OrderedDict):
+            modules = OrderedDict([(str(idx), module) for idx, module in enumerate(modules)])
+
+        nn.Sequential.__init__(self, modules)
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.logger.info("Use pytorch device: {}".format(device))
+
+        self._target_device = torch.device(device)
+        # ================
+
         if tie_word_embeddings:
-            self._tie_word_embeddings()
+            self._tie_word_embeddings(tie_all, init_word_embeddings)
         
         if freeze_word_embeddings:
             self._freeze_word_embeddings()
         
-        #Save some model info
-        if '__version__' not in self._model_config:
-            self._model_config['__version__'] = {
-                'sentence_transformers': __sbert_version__,
-                'transformers': transformers.__version__,
-                'pytorch': torch.__version__,
-                __LIBRARY_NAME__: __version__,
-            }
-        elif __LIBRARY_NAME__ not in self._model_config['__version__']:
-            self._model_config['__version__'][__LIBRARY_NAME__] = __version__
+        if add_version:
+            if '__version__' not in self._model_config:
+                self._model_config['__version__'] = {
+                    'sentence_transformers': sentence_transformers.__version__,
+                    'transformers': transformers.__version__,
+                    'pytorch': torch.__version__,
+                    __LIBRARY_NAME__: __version__,
+                }
+            elif __LIBRARY_NAME__ not in self._model_config['__version__']:
+                self._model_config['__version__'][__LIBRARY_NAME__] = __version__
         
-    def _tie_word_embeddings(self):
+    def _tie_word_embeddings(self, tie_all: bool=True, init_word_embeddings: bool=False):
         encoder_module, decoder_module = None, None
         for module in self.get_modules():
             if isinstance(module, Transformer):
@@ -105,13 +156,35 @@ class Framework(SentenceTransformer):
             if isinstance(module, Decoder):
                 decoder_module = module
         
-        if encoder_module is not None and decoder_module is not None:
-            encoder_input_word_embs = encoder_module.auto_model.get_input_embeddings()
+        if decoder_module is not None:
             decoder_input_word_embs = decoder_module.auto_model.get_input_embeddings()
             decoder_output_word_embs = decoder_module.auto_model.get_output_embeddings()
-            decoder_module.auto_model._tie_or_clone_weights(decoder_input_word_embs, encoder_input_word_embs)
-            decoder_module.auto_model._tie_or_clone_weights(decoder_output_word_embs, encoder_input_word_embs)
-    
+
+            if encoder_module is not None and (tie_all or init_word_embeddings):
+                if encoder_module.tokenizer.get_vocab() == decoder_module.tokenizer.get_vocab():
+                    encoder_input_word_embs = encoder_module.auto_model.get_input_embeddings()
+                    if tie_all:
+                        self.logger.info('decoder\'s input and output word embeddings are tied to encoder\'s word embeddings')
+                        decoder_module.auto_model._tie_or_clone_weights(decoder_input_word_embs, encoder_input_word_embs)
+                        decoder_module.auto_model._tie_or_clone_weights(decoder_output_word_embs, encoder_input_word_embs)
+                    else:
+                        self.logger.info('decoder\'s input and output word embeddings are tied, and they are initialized by encoder\'s word embeddings')
+                        print(encoder_input_word_embs.weight.norm())
+                        decoder_input_word_embs.weight.data = encoder_input_word_embs.weight.data.clone()
+                        print(decoder_input_word_embs.weight.norm())
+                        decoder_module.auto_model._tie_or_clone_weights(decoder_output_word_embs, decoder_input_word_embs)
+                        print(decoder_input_word_embs.weight.norm(), decoder_output_word_embs.weight.norm())
+
+                    new_vocab_size = len(encoder_module.tokenizer.get_vocab())
+                    if decoder_module.auto_model.config.vocab_size != new_vocab_size:
+                        self.logger.info(f'change `vocab_size` of decoder\'s config from {decoder_module.auto_model.config.vocab_size} to {new_vocab_size}')
+                        decoder_module.auto_model.config.vocab_size = new_vocab_size
+                else:
+                    raise ValueError('tokenizers of the encoder and the decoder are not identical, please do not pass `--tie_all` argument')
+            else:
+                self.logger.info('decoder\'s input and output word embeddings are tied')
+                decoder_module.auto_model._tie_or_clone_weights(decoder_input_word_embs, decoder_output_word_embs)
+
     def _freeze_word_embeddings(self):
         for module in self.get_modules():
             if isinstance(module, (Transformer, Decoder)):
@@ -134,7 +207,10 @@ class Framework(SentenceTransformer):
                 self._model_config = json.load(fIn)
 
             # Yang B. modification: additionally check version of zeronlg
-            for package_name, version in zip(['sentence_transformers', __LIBRARY_NAME__], [__sbert_version__, __version__]):
+            for package_name, version in zip(
+                    ['sentence_transformers', __LIBRARY_NAME__], 
+                    [sentence_transformers.__version__, __version__]
+                ):
                 if '__version__' in self._model_config \
                     and package_name in self._model_config['__version__'] \
                     and self._model_config['__version__'][package_name] > version:
@@ -159,7 +235,10 @@ class Framework(SentenceTransformer):
         modules = OrderedDict()
         for module_config in modules_config:
             # Yang B. modification: apply mappings, make it compatible to new implementations
-            module_type = sbert_mappings.get(module_config['type'], module_config['type'])
+            mappings = sbert_mappings
+            if hasattr(self, 'sbert_mappings'):
+                mappings.update(self.sbert_mappings)
+            module_type = mappings.get(module_config['type'], module_config['type'])
             module_class = import_from_string(module_type)
             module = module_class.load(os.path.join(model_path, module_config['path']))
             modules[module_config['name']] = module
@@ -188,21 +267,12 @@ class Framework(SentenceTransformer):
         for module in self.get_modules():
             if hasattr(module, key):
                 return getattr(module, key)
-            
-        if key == 'teacher_model_name':
-            if 'clip-ViT-B-32' in self.model_name_or_path:
-                return 'clip-ViT-B-32'
-            if 'clip-ViT-B-16' in self.model_name_or_path:
-                return 'clip-ViT-B-16'
-            if 'clip-ViT-L-14' in self.model_name_or_path:
-                return 'clip-ViT-L-14'
-
         return default_value
 
     def get_modules(self):
         return [self._modules[_] for _ in iter(self._modules)]
     
-    def _get_specific_model(self, before=True, instances=(Projector, Decoder), device=None, return_modules_only: bool = False):
+    def _get_specific_model(self, before=True, instances=(Projector, Decoder), device=None, return_modules_only: bool = False, **kwargs):
         """only keep related modules"""
         modules = self.get_modules()
         idx = 0
@@ -219,21 +289,21 @@ class Framework(SentenceTransformer):
                 return None  
             if return_modules_only:
                 return modules[:idx]
-            model = Framework(modules=modules[:idx], device=device)
+            model = Framework(modules=modules[:idx], device=device, **kwargs)
         else:
             # get modules >= idx
             if idx == len(modules):
                 return None
             if return_modules_only:
                 return modules[idx:]
-            model = Framework(modules=modules[idx:], device=device)
+            model = Framework(modules=modules[idx:], device=device, **kwargs)
 
         model.to(device)
         return model
 
     def get_encoding_model(self, device=None):
         """return a model that contains modules only related to encoding"""
-        return self._get_specific_model(before=True, instances=(Projector, Decoder), device=device or self._target_device)
+        return self._get_specific_model(before=True, instances=(Projector, Decoder), device=device or self._target_device, tie_word_embeddings=False)
     
     def get_encoding_modules(self) -> List[nn.Module]:
         """return modules only related to encoding"""
@@ -241,22 +311,22 @@ class Framework(SentenceTransformer):
 
     def get_decoding_model(self, device=None):
         """return a model that contains modules only related to decoding"""
-        return self._get_specific_model(before=False, instances=(Projector, Decoder), device=device or self._target_device)
+        return self._get_specific_model(before=False, instances=(Projector, Decoder), device=device or self._target_device, tie_word_embeddings=False)
     
     def get_decoding_modules(self) -> List[nn.Module]:
         """return modules only related to decoding"""
         return self._get_specific_model(before=False, instances=(Projector, Decoder), return_modules_only=True)
 
-    def tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]]):
+    def tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], langs: Optional[List[str]]=None):
         module = self._first_module()
         if hasattr(module, 'tokenize'):
-            return module.tokenize(texts)
+            return module.tokenize(texts, langs=langs)
         return {}
 
     def decoder_tokenize(self, texts: List[str], langs: Optional[List[str]]=None):
         module = self._last_module()
         if isinstance(module, Decoder):
-            return module.tokenize(texts, langs)
+            return module.tokenize(texts, langs=langs)
         return {}
     
     @property
@@ -265,6 +335,8 @@ class Framework(SentenceTransformer):
         module = self._first_module()
         if hasattr(module, 'tokenizer'):
             return module.tokenizer
+        elif hasattr(module, 'processor'):
+            return module.processor.tokenizer
         return None
     
     @property
@@ -319,13 +391,13 @@ class Framework(SentenceTransformer):
 
     def fit(self,
             train_objectives: Iterable[Tuple[DataLoader, nn.Module]],
-            evaluator: SentenceEvaluator = None,
+            evaluator: object = None,
             epochs: int = 1,
-            steps_per_epoch = None,
+            steps_per_epoch: int = None,
             scheduler: str = 'WarmupLinear',
             warmup_steps: int = 10000,
             optimizer_class: Type[Optimizer] = torch.optim.AdamW,
-            optimizer_params : Dict[str, object]= {'lr': 2e-5},
+            optimizer_params : Dict[str, object] = {'lr': 2e-5},
             weight_decay: float = 0.01,
             evaluation_steps: int = 0,
             output_path: str = None,
@@ -349,7 +421,7 @@ class Framework(SentenceTransformer):
         to make sure of equal training with each dataset.
 
         :param train_objectives: Tuples of (DataLoader, LossFunction). Pass more than one for multi-task learning
-        :param evaluator: An evaluator (sentence_transformers.evaluation) evaluates the model performance during training on held-out dev data. It is used to determine the best model that is saved to disc.
+        :param evaluator: An evaluator (zeronlg.evaluation) evaluates the model performance during training on held-out dev data. It is used to determine the best model that is saved to disc.
         :param epochs: Number of epochs for training
         :param steps_per_epoch: Number of training steps per epoch. If set to None (default), one epoch is equal the DataLoader size from train_objectives.
         :param scheduler: Learning rate scheduler. Available schedulers: constantlr, warmupconstant, warmuplinear, warmupcosine, warmupcosinewithhardrestarts
@@ -370,25 +442,10 @@ class Framework(SentenceTransformer):
         :param checkpoint_save_steps: Will save a checkpoint after so many steps
         :param checkpoint_save_total_limit: Total number of checkpoints to store
         """
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
-        cudnn.benchmark = True
+        seed_everything(seed=seed)
 
         self.use_masking = use_masking
         self.mask_prob = mask_prob
-
-        ##Add info to model card
-        #info_loss_functions = "\n".join(["- {} with {} training examples".format(str(loss), len(dataloader)) for dataloader, loss in train_objectives])
-        info_loss_functions =  []
-        for dataloader, loss in train_objectives:
-            info_loss_functions.extend(ModelCardTemplate.get_train_objective_info(dataloader, loss))
-        info_loss_functions = "\n\n".join([text for text in info_loss_functions])
-
-        info_fit_parameters = json.dumps({"evaluator": fullname(evaluator), "epochs": epochs, "steps_per_epoch": steps_per_epoch, "scheduler": scheduler, "warmup_steps": warmup_steps, "optimizer_class": str(optimizer_class),  "optimizer_params": optimizer_params, "weight_decay": weight_decay, "evaluation_steps": evaluation_steps, "max_grad_norm": max_grad_norm }, indent=4, sort_keys=True)
-        self._model_card_text = None
-        self._model_card_vars['{TRAINING_SECTION}'] = ModelCardTemplate.__TRAINING_SECTION__.replace("{LOSS_FUNCTIONS}", info_loss_functions).replace("{FIT_PARAMETERS}", info_fit_parameters)
-
 
         if use_amp:
             from torch.cuda.amp import autocast
@@ -523,7 +580,7 @@ class Framework(SentenceTransformer):
                 self._save_checkpoint_epoch(checkpoint_path, checkpoint_save_total_limit, epoch)
 
         if evaluator is None and output_path is not None:   #No evaluator, but output path: save final model version
-            self.save(output_path)
+            self.save(output_path, create_model_card=False)
 
         if checkpoint_path is not None and checkpoint_save_steps is not None:
             self._save_checkpoint(checkpoint_path, checkpoint_save_total_limit, global_step)
@@ -566,7 +623,7 @@ class Framework(SentenceTransformer):
     
     def _save_checkpoint_epoch(self, checkpoint_path, checkpoint_save_total_limit, epoch):
         # Store new checkpoint
-        self.save(os.path.join(checkpoint_path, str(epoch)))
+        self.save(os.path.join(checkpoint_path, str(epoch)), create_model_card=False)
 
         # Delete old checkpoints
         if checkpoint_save_total_limit is not None and checkpoint_save_total_limit > 0:

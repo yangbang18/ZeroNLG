@@ -1,12 +1,15 @@
 import os
 import json
 import torch.distributed as dist
+from typing import List
 from .distributed import (
     is_dist_avail_and_initialized, 
     is_main_process, 
     get_rank, 
     get_world_size,
 )
+from sentence_transformers.util import snapshot_download
+from .. import __LIBRARY_NAME__, __version__
 
 
 def read_json(rpath: str):
@@ -62,7 +65,7 @@ def collect_result(result, filename, local_wdir, save_result=False, remove_dupli
 
 def get_cache_folder(cache_folder: str=None):
     if cache_folder is None:
-        cache_folder = os.getenv('ZERONLG_HOME')
+        cache_folder = os.getenv('ZERONLG_HOME', None) or os.getenv('CKPT_HOME', None)
         if cache_folder is None:
             try:
                 from torch.hub import _get_torch_home
@@ -89,3 +92,34 @@ def get_formatted_string(kwargs, key, assigned_keys=None, assigned_kwargs=None, 
         return kwargs[format_key].format(**assigned_kwargs)
 
     return kwargs[key]
+
+
+def download_if_necessary(
+        model_name_or_path: str, 
+        cache_folder: str = None, 
+        use_auth_token: bool = False,
+        key_files: str = ['config.json', 'pytorch_model.bin'],
+        ignore_files: List[str] = ['flax_model.msgpack', 'rust_model.ot', 'tf_model.h5', 'model.onnx', 'model.safetensors'],
+    ):
+
+    assert model_name_or_path is not None
+
+    if cache_folder is None:
+        cache_folder = get_cache_folder()
+
+    if os.path.exists(model_name_or_path):
+        model_path = model_name_or_path
+    else:
+        model_path = os.path.join(cache_folder, model_name_or_path.replace('/', '_'))
+    
+    if any(not os.path.exists(os.path.join(model_path, key_file)) for key_file in key_files):
+        storage_path = snapshot_download(model_name_or_path,
+                        cache_dir=cache_folder,
+                        library_name=__LIBRARY_NAME__,
+                        library_version=__version__,
+                        ignore_files=ignore_files,
+                        use_auth_token=use_auth_token)
+        assert model_path == storage_path
+    
+    assert os.path.exists(model_path)
+    return model_path

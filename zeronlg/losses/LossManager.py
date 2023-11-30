@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from typing import Iterable, Dict, Tuple
-from ..Framework import Framework
+from .. import Framework
 
 
 class LossManager(nn.Module):

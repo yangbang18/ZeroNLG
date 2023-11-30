@@ -4,9 +4,7 @@ import json
 from torch import nn
 from transformers import AutoModel, AutoTokenizer, AutoConfig, T5Config
 from typing import List, Dict, Optional, Union, Tuple
-from sentence_transformers.util import snapshot_download
-from ..utils import get_cache_folder
-from .. import __LIBRARY_NAME__, __version__
+from ..utils import download_if_necessary, get_cache_folder
 
 
 # Derived from sentence_transformers.models.Transformer
@@ -38,27 +36,17 @@ class Transformer(nn.Module):
         Yang B. modification: 
         1) change the parameter `cache_dir` to `cache_folder`
         2) add a new parameter `use_auth_token`
-        3) call sentence_transformers.util.snapshot_download to download transformers
+        3) call utils.download_if_necessary to download transformers
         """
         super(Transformer, self).__init__()
         self.config_keys = ['max_seq_length', 'do_lower_case']
         self.do_lower_case = do_lower_case
 
-        cache_folder = get_cache_folder(cache_folder)
-        if os.path.exists(model_name_or_path):
-            model_path = model_name_or_path
-        else:
-            model_path = os.path.join(cache_folder, model_name_or_path.replace('/', '_'))
-        
-        if not os.path.exists(os.path.join(model_path, 'config.json')):
-            storage_path = snapshot_download(model_name_or_path,
-                            cache_dir=cache_folder,
-                            library_name=__LIBRARY_NAME__,
-                            library_version=__version__,
-                            ignore_files=['flax_model.msgpack', 'rust_model.ot', 'tf_model.h5'],
-                            use_auth_token=use_auth_token)
-            assert model_path == storage_path
-        
+        model_path = download_if_necessary(
+            model_name_or_path, 
+            cache_folder=get_cache_folder(cache_folder), 
+            use_auth_token=use_auth_token,
+        )
         assert os.path.exists(model_path)
 
         config = AutoConfig.from_pretrained(model_path, **model_args)
@@ -117,7 +105,7 @@ class Transformer(nn.Module):
     def get_word_embedding_dimension(self) -> int:
         return self.auto_model.config.hidden_size
 
-    def tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]]):
+    def tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]], **kwargs):
         """
         Tokenizes a text and maps tokens to token-ids
         """
@@ -148,7 +136,6 @@ class Transformer(nn.Module):
 
         output.update(self.tokenizer(*to_tokenize, padding=True, truncation='longest_first', return_tensors="pt", max_length=self.max_seq_length))
         return output
-
 
     def get_config_dict(self):
         return {key: self.__dict__[key] for key in self.config_keys}

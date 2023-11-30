@@ -7,7 +7,6 @@ import logging
 import subprocess
 import requests
 import wget
-import psutil
 import time
 import json
 import socket
@@ -284,16 +283,15 @@ def translate_eval(gts, res, eval_lang='en', cache_folder=get_cache_folder()) ->
     assert isinstance(res, (list, tuple))
     assert len(gts) == len(res)
 
-    if eval_lang == 'zh':
-        gts = [[tokenize_zh_sentence(item).split()] for item in gts]
-        res = [tokenize_zh_sentence(''.join(item.split())).split() for item in res]
-    else:
-        nlp = MyStanfordCoreNLP(cache_folder, lang=eval_lang)
-        gts = [[tokenize_sentence(item, nlp).split()] for item in gts]
-        res = [tokenize_sentence(item, nlp).split() for item in res]
+    gts = [gts] # only one reference set
 
-    from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
-    score = corpus_bleu(gts, res, smoothing_function=SmoothingFunction().method1)
+    from sacrebleu.metrics import BLEU
+    bleu = BLEU(lowercase=True, trg_lang=eval_lang)
+    results = bleu.corpus_score(res, gts)
+    ## signature for `zh`:               nrefs:1|case:lc|eff:no|tok:zh|smooth:exp|version:2.3.1
+    ## signature for `en`, `de`, `fr`:   nrefs:1|case:lc|eff:no|tok:13a|smooth:exp|version:2.3.1
+    #print(bleu.get_signature())
+
     return {
-        'BLEU': score,
+        'BLEU': results.score,
     }

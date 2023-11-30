@@ -4,12 +4,19 @@ import transformers
 import torch
 from torch import nn
 from PIL import Image
+from typing import Callable
 
 
 # Adapted from sentence_transformers.models.CLIPModel
 # (https://github.com/UKPLab/sentence-transformers/blob/master/sentence_transformers/models/CLIPModel.py)
 class CLIPModel(nn.Module):
-    def __init__(self,  model_name: str = "openai/clip-vit-base-patch32", processor_name = None, use_clip_tokens: bool = False):
+    def __init__(self, 
+                 model_name: str = "openai/clip-vit-base-patch32", 
+                 processor_name = None, 
+                 use_clip_tokens: bool = False,
+                 model_cls: Callable = transformers.CLIPModel,
+                 processor_cls: Callable = transformers.CLIPProcessor,
+    ):
         """
         Yang B. modification: 
         1) add truncation=True and max_length=77 in CLIPModel.tokenize to avoid bugs
@@ -23,8 +30,8 @@ class CLIPModel(nn.Module):
         if processor_name is None:
             processor_name = model_name
 
-        self.model = transformers.CLIPModel.from_pretrained(model_name)
-        self.processor = transformers.CLIPProcessor.from_pretrained(processor_name)
+        self.model = model_cls.from_pretrained(model_name)
+        self.processor = processor_cls.from_pretrained(processor_name)
         self.use_clip_tokens = use_clip_tokens
 
     def __repr__(self):
@@ -39,6 +46,8 @@ class CLIPModel(nn.Module):
             last_hidden_state, pooled_output, *_ = vision_outputs
             image_embeds = self.model.visual_projection(pooled_output)
             if self.use_clip_tokens:
+                # Note: the original code only applies post_layernorm on pooled_output!
+                last_hidden_state = self.model.vision_model.post_layernorm(last_hidden_state)
                 image_token_embeds = self.model.visual_projection(last_hidden_state)
                 
         if 'input_ids' in features:
@@ -83,8 +92,8 @@ class CLIPModel(nn.Module):
                 features['token_embeddings'] = text_token_embeds
 
         return features
-
-    def tokenize(self, texts):
+    
+    def tokenize(self, texts, **kwargs):
         images = []
         texts_values = []
         image_text_info = []

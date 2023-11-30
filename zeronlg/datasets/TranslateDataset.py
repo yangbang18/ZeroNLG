@@ -1,7 +1,7 @@
 import logging
-from sentence_transformers import LoggingHandler
 from torch.utils.data import Dataset
 from typing import Optional, List
+from sentence_transformers import LoggingHandler
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',

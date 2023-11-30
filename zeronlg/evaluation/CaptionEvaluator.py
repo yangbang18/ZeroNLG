@@ -1,15 +1,15 @@
 import os
 import json
 import torch
+import torch.nn as nn
 import logging
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from typing import Dict, Any, Union, Callable
 from sentence_transformers import LoggingHandler
-from typing import Dict, Any, Union
-
-from .. import Framework, ZeroNLG
 from ..datasets import CaptionDataset
 from ..utils import coco_caption_eval
+from .. import Framework, ZeroNLG
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -29,13 +29,14 @@ class CaptionEvaluator:
             monitor: str = 'CIDEr', 
             with_epoch: bool = False, 
             with_steps: bool = False,
-            auto_save: bool = True
+            auto_save: bool = True,
+            framework_cls: Callable = Framework,
+            seq2seq_cls: Callable = ZeroNLG,
         ):
         super().__init__()
         assert mode in ['val', 'test']
         assert 'lang' in evaluation_settings
         assert isinstance(loader.dataset, CaptionDataset)
-        assert loader.dataset.clip_model is not None
 
         self.loader = loader
         self.gt_file_path = gt_file_path
@@ -46,13 +47,15 @@ class CaptionEvaluator:
         self.with_epoch = with_epoch
         self.with_steps = with_steps
         self.auto_save = auto_save
+        self.framework_cls = framework_cls
+        self.seq2seq_cls = seq2seq_cls
 
     def log(self, msg):
         self.logger.info(msg)
     
     @torch.no_grad()
     def __call__(self, 
-            model: Union[Framework, ZeroNLG, str], 
+            model: Union[nn.Sequential, nn.Module, str], 
             output_path: str = None, 
             epoch: int = -1, 
             steps: int = -1, 
@@ -71,28 +74,34 @@ class CaptionEvaluator:
             result_file = os.path.join(output_path, f'{prefix}_captions.json')
             detailed_scores_file = os.path.join(output_path, f'{prefix}_detailed_scores.json')
             scores_file = os.path.join(output_path, f'{prefix}_scores.json')
-
+        
         if type(model) is str:
-            zeronlg = ZeroNLG(model)
-        elif isinstance(model, Framework):
-            zeronlg = ZeroNLG(
+            model = self.seq2seq_cls(model)
+        elif isinstance(model, self.framework_cls):
+            model = self.seq2seq_cls(
                 multilingual_model=model,
                 device=model.device,
                 load_clip_model=False,
             )
         else:
-            assert isinstance(model, ZeroNLG)
-            zeronlg = model
+            assert isinstance(model, self.seq2seq_cls)
 
         results = []
         for batch in tqdm(self.loader):
             image_ids, image_embs = batch
 
-            outputs = zeronlg.forward_caption(
-                image_embs=image_embs,
-                **self.evaluation_settings,
-            )
+            if self.loader.dataset.clip_model is not None:
+                images = None
+            else:
+                images, image_embs = image_embs, None
 
+            outputs = model(
+                images=images,
+                image_embs=image_embs, 
+                task='caption',
+                **self.evaluation_settings
+            )
+            
             for caption, image_id in zip(outputs, image_ids):
                 results.append({"image_id": image_id, "caption": caption})
                 if print_sent:

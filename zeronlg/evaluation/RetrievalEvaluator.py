@@ -2,14 +2,14 @@ import os
 import json
 import logging
 import torch
+import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from sentence_transformers import LoggingHandler
-from typing import Dict, Union, List, Any
-
-from .. import Framework, ZeroNLG
+from typing import Dict, Union, List, Any, Callable
 from ..datasets import CaptionDatasetForRetrieval
+from .. import Framework, ZeroNLG
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -186,11 +186,12 @@ class RetrievalEvaluator:
             with_steps: bool = False,
             auto_save: bool = True,
             n_fold: int = 1,
+            framework_cls: Callable = Framework,
+            seq2seq_cls: Callable = ZeroNLG,
         ):
         super().__init__()
         assert mode in ['val', 'test']
         assert isinstance(loader.dataset, CaptionDatasetForRetrieval)
-        assert loader.dataset.clip_model is not None
 
         self.loader = loader
         self.mode = mode
@@ -200,13 +201,15 @@ class RetrievalEvaluator:
         self.with_steps = with_steps
         self.auto_save = auto_save
         self.n_fold = n_fold
+        self.framework_cls = framework_cls
+        self.seq2seq_cls = seq2seq_cls
 
     def log(self, msg):
         self.logger.info(msg)
     
     @torch.no_grad()
     def __call__(self, 
-            model: Union[Framework, ZeroNLG, str], 
+            model: Union[nn.Sequential, nn.Module, str], 
             output_path: str = None, 
             epoch: int = -1, 
             steps: int = -1, 
@@ -226,28 +229,33 @@ class RetrievalEvaluator:
             scores_file = os.path.join(output_path, f'{prefix}_scores.json')
 
         if type(model) is str:
-            zeronlg = ZeroNLG(model)
-        elif isinstance(model, Framework):
-            zeronlg = ZeroNLG(
+            model = self.seq2seq_cls(model)
+        elif isinstance(model, self.framework_cls):
+            model = self.seq2seq_cls(
                 multilingual_model=model,
                 device=model.device,
                 load_clip_model=False,
             )
         else:
-            assert isinstance(model, ZeroNLG)
-            zeronlg = model
+            assert isinstance(model, self.seq2seq_cls)
 
         all_image_embs, all_text_embs = [], []
         for batch in tqdm(self.loader):
             _, image_embs, texts = batch
 
-            image_embs = zeronlg.get_image_embeddings(
+            if self.loader.dataset.clip_model is not None:
+                images = None
+            else:
+                images, image_embs = image_embs, None
+
+            image_embs = model.get_image_embeddings(
+                images=images,
                 image_embs=image_embs,
                 normalize=True,
                 mean_pooling=True, # TODO: we now always apply mean pooling
             )
 
-            text_embs = zeronlg.get_text_embeddings(
+            text_embs = model.get_text_embeddings(
                 texts=texts,
                 normalize=True,
                 batch_size=image_embs.size(0),

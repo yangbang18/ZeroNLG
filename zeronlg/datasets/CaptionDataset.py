@@ -5,10 +5,10 @@ import numpy as np
 import json
 import pickle
 import decord
-
-from sentence_transformers import LoggingHandler
-from torch.utils.data import Dataset
 from PIL import Image
+from typing import Dict
+from torch.utils.data import Dataset
+from sentence_transformers import LoggingHandler
 from .. import Framework
 from ..utils import get_uniform_frame_ids
 
@@ -31,6 +31,8 @@ class CaptionDataset(Dataset):
                  logger: logging.Logger = None, 
                  return_images: bool = False, 
                  mean_pooling: bool = False,
+                 mean_pooling_dim: int = 0,
+                 rpath2emb: Dict[str, np.ndarray] = None,
                  ):
         
         if return_images:
@@ -45,13 +47,17 @@ class CaptionDataset(Dataset):
         self.logger = logger or global_logger
         self.return_images = return_images
         self.mean_pooling = mean_pooling
+        self.mean_pooling_dim = mean_pooling_dim
 
         self.annotation = json.load(open(ann_rpath, 'r'))
         assert 'image' in self.annotation[0], f'{self.annotation[0]} does not contain the key `image`'
         
         self.pickle_path = pickle_path
         self.has_been_updated = False
-        if pickle_path is not None and os.path.exists(pickle_path):
+        
+        if rpath2emb is not None:
+            self.rpath2emb = rpath2emb
+        elif pickle_path is not None and os.path.exists(pickle_path):
             self.log(f'Load CLIP embs from {pickle_path}')
             self.rpath2emb = pickle.load(open(pickle_path, 'rb'))
         else:
@@ -109,6 +115,9 @@ class CaptionDataset(Dataset):
                 out['images'] = self.rpath2images[rpath]
         
         out['lang'] = self.lang
+
+        if 'emb' in out and self.mean_pooling and len(out['emb'].shape) >= 2:
+            out['emb'] = out['emb'].mean(axis=self.mean_pooling_dim)
         return out
 
     def log(self, msg):
@@ -130,8 +139,6 @@ class CaptionDataset(Dataset):
         image_ids = [b['image_id'] for b in batch]
         if 'emb' in batch[0]:
             embs = torch.FloatTensor(np.array([b['emb'] for b in batch]))
-            if self.mean_pooling:
-                embs = embs.mean(1, keepdims=True)
             return image_ids, embs
         else:
             images = [b['images'] for b in batch]
@@ -149,6 +156,7 @@ class CaptionDatasetForRetrieval(CaptionDataset):
                 logger: logging.Logger = None, 
                 return_images: bool = False, 
                 mean_pooling: bool = False,
+                rpath2emb: Dict[str, np.ndarray] = None,
                 ):
         super().__init__(
             vision_root=vision_root, 
@@ -160,6 +168,7 @@ class CaptionDatasetForRetrieval(CaptionDataset):
             logger=logger, 
             return_images=return_images, 
             mean_pooling=True, # TODO: we now always apply mean pooling
+            rpath2emb=rpath2emb,
         )
     
     def collate_fn(self, batch):
@@ -178,8 +187,6 @@ class CaptionDatasetForRetrieval(CaptionDataset):
 
         if 'emb' in batch[0]:
             embs = torch.FloatTensor(np.array([b['emb'] for b in batch]))
-            if self.mean_pooling:
-                embs = embs.mean(1, keepdims=True)
             return image_ids, embs, texts
         else:
             images = [b['images'] for b in batch]

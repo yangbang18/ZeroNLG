@@ -10,9 +10,10 @@ python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_
 python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset flickr30k --lang zh
 python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset flickr30k --lang de
 python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset flickr30k --lang fr
-python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset flickr30k --lang cs
+# python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset flickr30k --lang cs
 python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset coco --lang en
-python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset coco --lang ja
-#python infer_retrieval.py --model ${model} --output_path "${outputPath}" --dataset msrvtt --lang en
+# python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset coco --lang ja
+python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset msrvtt --lang en
+python infer_retrieval.py --model ${model} --output_path "${outputPath}" --clip_model_name "${clip}" --dataset vatex --lang en
 
 # bash scripts/translate.sh zeronlg-4langs-vc output/zeronlg-4langs-vc

@@ -1,5 +1,6 @@
 
 import os
+import sys
 import time
 import datetime
 import argparse
@@ -7,9 +8,8 @@ import logging
 import configs
 
 from torch.utils.data import DataLoader
-from sentence_transformers import LoggingHandler
-from zeronlg import ZeroNLG, CaptionDataset, CaptionEvaluator
-from zeronlg.utils import get_formatted_string
+from zeronlg import ZeroNLG, CaptionDataset, CaptionEvaluator, LoggingHandler
+from zeronlg.utils import get_formatted_string, coco_caption_eval
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -25,7 +25,8 @@ except:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, required=True)
+    parser.add_argument('--results_file', type=str)
+    parser.add_argument('--model', type=str)
     parser.add_argument('--use_clip_tokens', type=int, help='Whether use token-level visual embeddings?')
     # Data paths and attributes
     parser.add_argument('--data_root', type=str, default=ROOT)
@@ -61,6 +62,17 @@ if __name__ == '__main__':
     parser.add_argument('--no_suffix_folder', action='store_true', help='If True, the suffix `evaluations_caption/{dataset}/{lang}` will not be joined to the output path')
     parser.add_argument('--print_sent', action='store_true')
     args = parser.parse_args()
+
+    if args.results_file:
+        logger.info(f'results_file: {args.results_file}')
+        for mode in args.modes:
+            assert mode in ['val', 'test']
+            gt_file = f'{ROOT}/{args.dataset}/{args.lang}/{mode}_gt.json'
+            logger.info(f'gt_file: {gt_file}')
+            coco_caption_eval(gt_file, args.results_file, eval_lang=args.lang)
+        sys.exit(0)
+    else:
+        assert args.model is not None, "please specify --model"
 
     if not os.path.exists(args.model):
         assert args.output_path, "you are training to load a model from hugginface hub, please specify --output_path"

@@ -1,5 +1,5 @@
 __LIBRARY_NAME__ = 'zeronlg'
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __HUGGINGFACE_HUB_NAME__ = 'yangbang18'
 
 
@@ -17,3 +17,5 @@ from .evaluation import (
     TranslateEvaluator, 
     RetrievalEvaluator
 )
+
+from sentence_transformers import LoggingHandler

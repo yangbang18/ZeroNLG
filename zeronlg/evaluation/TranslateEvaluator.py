@@ -1,15 +1,15 @@
 import os
 import json
 import torch
+import torch.nn as nn
 import logging
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from typing import Dict, Any, Union, Callable
 from sentence_transformers import LoggingHandler
-from typing import Dict, Any, Union
-
-from .. import Framework, ZeroNLG
 from ..datasets import TranslateDataset
 from ..utils import translate_eval
+from .. import Framework, ZeroNLG
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -28,6 +28,8 @@ class TranslateEvaluator:
             monitor: str = 'BLEU', 
             with_epoch: bool = False, 
             with_steps: bool = False,
+            framework_cls: Callable = Framework,
+            seq2seq_cls: Callable = ZeroNLG,
         ):
         super().__init__()
         assert mode in ['val', 'test']
@@ -40,13 +42,15 @@ class TranslateEvaluator:
         self.monitor = monitor
         self.with_epoch = with_epoch
         self.with_steps = with_steps
+        self.framework_cls = framework_cls
+        self.seq2seq_cls = seq2seq_cls
 
     def log(self, msg):
         self.logger.info(msg)
     
     @torch.no_grad()
     def __call__(self, 
-            model: Union[Framework, ZeroNLG], 
+            model: Union[nn.Sequential, nn.Module, str], 
             output_path: str = None, 
             epoch: int = -1, 
             steps: int = -1, 
@@ -69,22 +73,24 @@ class TranslateEvaluator:
             result_file = os.path.join(output_path, f'{prefix}_translations_{source}-{target}.json')
             scores_file = os.path.join(output_path, f'{prefix}_scores_{source}-{target}.json')
 
-        if isinstance(model, Framework):
-            zeronlg = ZeroNLG(
+        if type(model) is str:
+            model = self.seq2seq_cls(model)
+        elif isinstance(model, self.framework_cls):
+            model = self.seq2seq_cls(
                 multilingual_model=model,
                 device=model.device,
                 load_clip_model=False,
             )
         else:
-            assert isinstance(model, ZeroNLG)
-            zeronlg = model
+            assert isinstance(model, self.seq2seq_cls)
 
         results, gts = [], []
         for batch in tqdm(self.loader):
             source_sentences, target_sentences = batch
 
-            outputs = zeronlg.forward_translate(
+            outputs = model(
                 texts=source_sentences,
+                task='translate',
                 **self.evaluation_settings,
             )
 

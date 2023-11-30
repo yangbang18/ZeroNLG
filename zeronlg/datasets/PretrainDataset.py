@@ -4,10 +4,9 @@ import gzip
 import random
 import torch
 import numpy as np
-
-from sentence_transformers import LoggingHandler
-from torch.utils.data import Dataset
 from typing import Union, List
+from torch.utils.data import Dataset
+from sentence_transformers import LoggingHandler
 from .. import Framework
 
 
@@ -168,7 +167,7 @@ class PretrainDataset(Dataset):
                 
                 if hasattr(self, 'langs_of_data'):
                     # ensure that each line has the same number of sentences as that of languages
-                    assert len(sentences) == len(self.langs_of_data[-1])
+                    assert len(sentences) == len(self.langs_of_data[-1]), f"{sentences}, {len(self.langs_of_data[-1])}"
             
                 if max_sentence_length is not None and max_sentence_length > 0 and max([len(sent) for sent in sentences]) > max_sentence_length:
                     continue
