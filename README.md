@@ -5,7 +5,7 @@ PyTroch implementation of our paper published in IEEE Transactions on Pattern An
 > 
 > Bang Yang, Fenglin Liu, Yuexian Zou, Xian Wu, Yaowei Wang, and David A. Clifton.
 >
-> [[arXiv]](https://arxiv.org/abs/2303.06458) [[TPAMI]]([https://arxiv.org/abs/2303.06458](https://ieeexplore.ieee.org/document/10453989))  
+> [[arXiv]](https://arxiv.org/abs/2303.06458) [[TPAMI]](https://ieeexplore.ieee.org/document/10453989)  
 
 
 ## TOC
