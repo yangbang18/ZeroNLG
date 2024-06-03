@@ -1,11 +1,11 @@
 # ZeroNLG
 
-PyTroch implementation of our Preprint paper:
+PyTroch implementation of our paper published in IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI) 2024:
 > **ZeroNLG: Aligning and Autoencoding Domains for Zero-Shot Multimodal and Multilingual Natural Language Generation**
 > 
 > Bang Yang, Fenglin Liu, Yuexian Zou, Xian Wu, Yaowei Wang, and David A. Clifton.
 >
-> [[arXiv]](https://arxiv.org/abs/2303.06458)
+> [[arXiv]](https://arxiv.org/abs/2303.06458) [[TPAMI]]([https://arxiv.org/abs/2303.06458](https://ieeexplore.ieee.org/document/10453989))  
 
 
 ## TOC
