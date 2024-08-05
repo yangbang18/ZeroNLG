@@ -5,7 +5,7 @@ PyTroch implementation of our paper published in IEEE Transactions on Pattern An
 > 
 > Bang Yang, Fenglin Liu, Yuexian Zou, Xian Wu, Yaowei Wang, and David A. Clifton.
 >
-> [[arXiv]](https://arxiv.org/abs/2303.06458) [[TPAMI]](https://ieeexplore.ieee.org/document/10453989)  
+> [[TPAMI]](https://ieeexplore.ieee.org/document/10453989), [[arXiv]](https://arxiv.org/abs/2303.06458)  
 
 
 ## TOC
@@ -185,7 +185,7 @@ python train.py \
 --student_emb_keyname token_embeddings \
 --use_masking \
 --mask_prob 0.05 \
---noise_std 0.001
+--noise_std 0.01
 ```
 
 **Note:** 
@@ -245,14 +245,15 @@ If you encounter any problems when using the code, or want to report a bug, you 
 Please consider citing our papers if our code, data and models are useful to your work, thanks sincerely!
 
 ```bibtex
-@misc{Yang2023ZeroNLG,
-   title={ZeroNLG: Aligning and Autoencoding Domains for Zero-Shot Multimodal and Multilingual Natural Language Generation},
-   author={Yang, Bang and Liu, Fenglin and Zou, Yuexian and Wu, Xian and Wang, Yaowei and Clifton, David A.},
-   journal={arXiv preprint arXiv:2303.06458}
-   year={2023},
-   eprint = {2303.06458},
-   archiveprefix = {arxiv}
-}
+@ARTICLE{Yang2024ZeroNLG,
+  author={Yang, Bang and Liu, Fenglin and Zou, Yuexian and Wu, Xian and Wang, Yaowei and Clifton, David A.},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence}, 
+  title={ZeroNLG: Aligning and Autoencoding Domains for Zero-Shot Multimodal and Multilingual Natural Language Generation}, 
+  year={2024},
+  volume={46},
+  number={8},
+  pages={5712-5724},
+  doi={10.1109/TPAMI.2024.3371376}}
 ```
 
 ## Acknowledgements
