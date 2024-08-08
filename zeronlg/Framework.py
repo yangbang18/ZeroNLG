@@ -113,7 +113,7 @@ class Framework(sentence_transformers.SentenceTransformer, nn.Sequential):
                 if not os.path.exists(model_path):
                     if not os.path.exists(os.path.join(model_path, 'modules.json')):
                         # Download from hub with caching
-                        download_if_necessary(model_path, cache_folder, use_auth_token, key_files=['modules.json'])
+                        download_if_necessary(model_name_or_path, cache_folder, use_auth_token, key_files=['modules.json'])
 
             if os.path.exists(os.path.join(model_path, 'modules.json')):    #Load as SentenceTransformer model
                 modules = self._load_sbert_model(model_path)
