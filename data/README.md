@@ -132,7 +132,7 @@ We provide the following annotations:
 - MSR-VTT: `en`
 - VATEX: `en`, `zh`
 
-**Notes:** See `prepare_text_data.ipynb` for more details, where we provide bibtex of references and etc. We can not re-distribute the raw images and videos, you should download them by yourself.
+**Notes:** See `prepare_text_data.ipynb` for more details, where we provide bibtex of references, etc. 
 
 
 ## Data Formats
